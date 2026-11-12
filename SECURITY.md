@@ -8,7 +8,7 @@
 
 ## Reporting a vulnerability
 
-Email **PLACEHOLDER**. Do not open a public issue or pull request. Include:
+Email **support@storenet.ai**. Do not open a public issue or pull request. Include:
 
 - the `storenet` and Python versions,
 - steps to reproduce,

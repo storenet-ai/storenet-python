@@ -4,14 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "storenet"
-version = "0.1.0"
+version = "0.1.0rc1"
 description = "Command-line tool and Python library for the StoreNet Partner API: create, edit with AI and list shop web designs."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-# No author email until a real address is chosen: hatchling rejects a value that is not an address.
-authors = [{ name = "PLACEHOLDER" }]
+authors = [{ name = "StoreNet", email = "support@storenet.ai" }]
 keywords = ["storenet", "partner-api", "cli", "shop-design"]
 classifiers = [
     "Development Status :: 3 - Alpha",
