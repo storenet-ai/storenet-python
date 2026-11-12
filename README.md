@@ -1,122 +1,109 @@
 # storenet
 
-Thư viện Python và lệnh `storenet` cho StoreNet Partner API: tạo, sửa bằng AI và liệt kê mẫu
-thiết kế web của cửa hàng, không phải tự ký HMAC.
+Python library and `storenet` command-line tool for the StoreNet Partner API: create, edit with
+AI, and list the web designs of a StoreNet shop without signing HMAC requests yourself.
 
-- Python 3.10 trở lên, chỉ dùng thư viện chuẩn (không có dependency).
-- Bản 0.1 gồm 3 thao tác trên mẫu thiết kế: `create`, `update`, `list`.
+- Python 3.10 or later, standard library only (no dependencies).
+- Version 0.1 covers three operations on shop designs: `create`, `update`, `list`.
 
-## Điều kiện
+## Requirements
 
-- Cửa hàng StoreNet dùng **gói Pro trở lên** và đã bật công cụ thiết kế shop nhanh. Gói thấp hơn
-  nhận lỗi `403290`; công cụ đang tắt nhận `404310`.
-- Một khoá Partner API có scope `shop_designs:write`, do quản trị cửa hàng tạo. Mẫu thiết kế
-  thuộc về người tạo khoá và credit AI trừ vào ví của người đó.
+- The StoreNet shop is on the **Pro plan or higher** and has the quick shop designer turned on.
+  A lower plan returns `403290`; a disabled designer returns `404310`.
+- A Partner API key with the `shop_designs:write` scope, created by a shop administrator.
+  Designs belong to the administrator who created the key, and AI credits are charged to that
+  administrator's wallet.
 
-## Cài đặt
+## Installation
 
 ```bash
 pip install storenet
 storenet --version
 ```
 
-## Cấu hình
+## Configuration
 
-Gói đọc 3 biến môi trường. Thiếu biến nào, lệnh dừng với mã thoát 2 và nêu tên biến đó; gói
-không có URL mặc định.
+The package reads three environment variables. If any is missing, the command exits with code 2
+and names the missing variable. There is no default URL.
 
 ```bash
-export STORENET_BASE_URL="https://shop.example.com"   # địa chỉ cửa hàng của bạn
+export STORENET_BASE_URL="https://shop.example.com"   # your shop's address
 export STORENET_KEY_ID="<key id>"
 export STORENET_SECRET="<secret>"
 ```
 
-`STORENET_BASE_URL` phải dùng https; http chỉ được chấp nhận với địa chỉ IP loopback của chính
-máy bạn. Gói không đi theo chuyển hướng (3xx): hãy đặt đúng địa chỉ https cuối cùng của cửa hàng.
+`STORENET_BASE_URL` must use https; plain http is accepted only for a loopback IP address on
+your own machine. The package does not follow redirects (3xx): set the shop's final https
+address.
 
-Giữ `STORENET_SECRET` như mật khẩu: không commit, không dán vào issue. Gói không bao giờ in
-secret ra màn hình hay đưa vào thông điệp lỗi.
+Treat `STORENET_SECRET` like a password: never commit it or paste it into an issue. The package
+never prints the secret or includes it in error messages.
 
-## Dùng lệnh `storenet`
+## Command-line usage
 
-### Tạo mẫu
-
-```bash
-storenet site create "Tiệm bánh nhỏ ở phố cổ, tông kem ấm"
-storenet site create --file mo_ta.txt
-```
-
-```text
-Đã tạo: Tiệm Bánh Phố Cổ (bakery)
-ID: 1b2c3d4e-....
-Xem: https://shop.example.com/d/...
-```
-
-Một lượt tạo mất khoảng 15 giây. Mô tả dài từ 1 đến 600 ký tự.
-
-### Sửa mẫu bằng AI
+### Create a design
 
 ```bash
-storenet site update 1b2c3d4e "Chuyển sang gam màu đỏ, tiêu đề to hơn"
+storenet site create "A small bakery in the old quarter, warm cream colours"
+storenet site create --file description.txt
 ```
 
-```text
-Đã đổi:
-  - Màu — đổi bộ màu
-  - Tiêu đề — đổi cỡ chữ
-Không làm được:
-  - Logo — đổi ảnh: chưa hỗ trợ
-Credit: −1.5 (còn 98.5)
-Xem: https://shop.example.com/d/...
+Prints the design name, its industry, its ID and a public preview link. A create takes about
+15 seconds. The description must be 1 to 600 characters long.
+
+### Edit a design with AI
+
+```bash
+storenet site update 1b2c3d4e "Switch to a red colour scheme and make the title larger"
 ```
 
-- `ID` là ID đầy đủ hoặc vài ký tự đầu (thường 8 ký tự như trong `site list`). Tiền tố khớp
-  nhiều mẫu thì lệnh liệt kê các ID trùng và thoát 2; không khớp mẫu nào thì thoát 1.
-- Yêu cầu dài từ 1 đến 400 ký tự. Một lượt sửa có thể tới khoảng 110 giây.
-- AI không áp được thay đổi nào thì lệnh in lý do, không trừ credit và thoát 1.
-- Link xem không đổi sau khi sửa.
+Prints what the AI changed, what it could not do (with reasons), the credits charged and the
+remaining balance, and the preview link.
 
-### Liệt kê mẫu
+- `ID` is the full ID or its first few characters (usually the 8 shown by `site list`). A prefix
+  that matches several designs lists the matching IDs and exits with code 2; a prefix that
+  matches none exits with code 1.
+- The request must be 1 to 400 characters long. An edit can take up to about 110 seconds.
+- When the AI applies no change, the command prints the reasons, charges no credit and exits
+  with code 1.
+- The preview link stays the same after an edit.
+
+### List designs
 
 ```bash
 storenet site list
 ```
 
-```text
-ID        TÊN               NGÀNH   CẬP NHẬT          LINK
-1b2c3d4e  Tiệm Bánh Phố Cổ  bakery  2026-11-01 15:30  https://shop.example.com/d/...
-Tổng: 1 mẫu
-```
+Prints a table with the columns ID (first 8 characters), name, industry, last update and link,
+followed by the total. The list contains only the designs created through the Partner API by
+the key's owner, most recently updated first; the command fetches every page.
 
-Danh sách chỉ gồm các mẫu tạo qua Partner API bởi chủ khoá, mới cập nhật trước; lệnh tự lấy
-hết các trang.
+### Common options
 
-### Tuỳ chọn chung
+- `--json`: print the server's raw JSON payload (for scripts).
+- `--idempotency-key KEY` (`create`, `update`): set your own deduplication key. Sending the same
+  key with the same body again returns the original result, without creating anything new or
+  charging credits a second time.
 
-- `--json`: in nguyên payload JSON của máy chủ (dùng cho script).
-- `--idempotency-key KHOÁ` (`create`, `update`): đặt khoá chống trùng của riêng bạn. Gửi lại
-  cùng khoá và cùng nội dung thì nhận lại đúng kết quả cũ, không tạo thêm, không trừ credit lần
-  nữa.
+### Exit codes
 
-### Mã thoát
-
-| Mã | Ý nghĩa |
+| Code | Meaning |
 |---|---|
-| 0 | Thành công |
-| 1 | Máy chủ trả lỗi, AI không đổi gì, hoặc tiền tố ID không khớp mẫu nào |
-| 2 | Sai cú pháp, thiếu hoặc sai biến môi trường, hoặc tiền tố ID khớp nhiều mẫu |
+| 0 | Success |
+| 1 | The server returned an error, the AI changed nothing, or the ID prefix matched no design |
+| 2 | Invalid usage, a missing or invalid environment variable, or an ID prefix that matched several designs |
 
-## Dùng làm thư viện
+## Library usage
 
 ```python
 from storenet import StorenetClient, StorenetError
 
-client = StorenetClient.from_env()  # hoặc StorenetClient(base_url, key_id, secret)
+client = StorenetClient.from_env()  # or StorenetClient(base_url, key_id, secret)
 
-site = client.sites.create("Cửa hàng thú cưng, tông xanh lá")
+site = client.sites.create("A pet shop with a green colour scheme")
 print(site.id, site.name, site.industry, site.url)
 
-edit = client.sites.update(site.id, "Đổi sang tông cam")
+edit = client.sites.update(site.id, "Switch to an orange colour scheme")
 if edit.applied:
     print(edit.changed, edit.credits_used, edit.credits_available)
 else:
@@ -126,49 +113,55 @@ for item in client.sites.list():
     print(item.id[:8], item.name, item.updated_at)
 ```
 
-- `sites.update` trả `Edit` cả khi AI không đổi gì (`outcome` là `refused` hoặc `empty`); chỉ lỗi
-  thật mới ném `StorenetError`.
-- `sites.update` cần ID đầy đủ (UUID) như trong `Site.id`; giá trị khác ném `ValueError` trước khi
-  gửi. Chỉ lệnh `storenet` mới tự tìm ID từ vài ký tự đầu.
-- `StorenetClient(..., timeout=130, max_retries=2)`: timeout tính theo từng request.
+- `sites.update` returns an `Edit` even when the AI changes nothing (`outcome` is `refused` or
+  `empty`); only real errors raise `StorenetError`.
+- `sites.update` needs the full ID (a UUID) as in `Site.id`; any other value raises `ValueError`
+  before anything is sent. Only the `storenet` command resolves an ID from its first characters.
+- `StorenetClient(..., timeout=130, max_retries=2)`: the timeout applies to each request.
 
-## Gọi lại tự động
+## Automatic retries
 
-Mỗi lệnh `create` / `update` gửi một `Idempotency-Key` (tự sinh nếu bạn không truyền). Khi gặp
-lỗi tạm thời, gói gọi lại tối đa `max_retries` lần (mặc định 2) với **cùng** khoá, chữ ký mới:
+Every `create` / `update` sends an `Idempotency-Key` (generated if you do not pass one). On a
+temporary error the package retries up to `max_retries` times (default 2) with the **same** key
+and a fresh signature:
 
-- `429`: chờ theo header `Retry-After` (tối đa 60 giây); không có header thì chờ 2 rồi 4 giây.
-- `503310`, `503190`, `409171`, hết thời gian chờ, đứt kết nối: chờ 2 rồi 4 giây.
-- `409310` (mẫu vừa bị sửa ở nơi khác) khi `update`: gọi lại đúng một lần trên bản mới nhất.
+- `429`: waits for the `Retry-After` header (at most 60 seconds); without the header it waits
+  2, then 4 seconds.
+- `503310`, `503190`, `409171`, a timeout or a dropped connection: waits 2, then 4 seconds.
+- `409310` (the design was just saved elsewhere) on `update`: retries exactly once against the
+  latest version.
 
-Các lỗi 4xx khác (ví dụ `403080` hết credit) không được gọi lại.
+Other 4xx errors (for example `403080`, out of credits) are not retried.
 
-Khi `create` / `update` vẫn lỗi sau mọi lần gọi lại, `StorenetError.details["idempotency_key"]`
-giữ khoá đã gửi. Lượt đó có thể đã chạy xong ở máy chủ: gọi lại với đúng khoá này để nhận kết
-quả mà không trừ credit lần nữa. Lệnh `storenet` in sẵn gợi ý `--idempotency-key <khoá>`.
+When `create` / `update` still fails after every retry, `StorenetError.details["idempotency_key"]`
+holds the key that was sent. The request may have completed on the server: call again with that
+same key to get the result without being charged again. The `storenet` command prints an
+`--idempotency-key <key>` hint for you.
 
-## Lỗi
+## Errors
 
-Lỗi do máy chủ trả mang đúng mã của máy chủ trong `StorenetError.code` (ví dụ `"409310"`), kèm
-`status`, `message`, `details`. Lỗi phía client dùng mã chữ:
+Errors returned by the server carry the server's code in `StorenetError.code` (for example
+`"409310"`), together with `status`, `message` and `details`. Client-side errors use text codes:
 
-| Mã | Khi nào |
+| Code | When |
 |---|---|
-| `missing_config` | Thiếu biến môi trường hoặc `base_url` không phải URL đầy đủ (`StorenetConfigError`) |
-| `insecure_base_url` | `base_url` dùng http tới máy khác ngoài địa chỉ IP loopback (`StorenetConfigError`) |
-| `redirected` | Máy chủ trả chuyển hướng 3xx; `details["location"]` là địa chỉ đích. Đặt `STORENET_BASE_URL` thành địa chỉ https cuối cùng |
-| `not_deployed` | Cửa hàng chưa lên bản máy chủ hỗ trợ thao tác này (thường gặp ở `list` / `update`); báo quản trị cửa hàng cập nhật |
-| `validation_error` | Máy chủ từ chối dữ liệu gửi lên (422) |
-| `timeout` | Quá thời gian chờ phản hồi |
-| `network_error` | Không kết nối được hoặc kết nối bị đứt |
-| `invalid_response` | Máy chủ trả nội dung không phải JSON hoặc sai định dạng |
+| `missing_config` | A missing environment variable, or a `base_url` that is not a full URL (`StorenetConfigError`) |
+| `insecure_base_url` | `base_url` uses http to a host other than a loopback IP address (`StorenetConfigError`) |
+| `redirected` | The server answered with a 3xx redirect; `details["location"]` is the target. Set `STORENET_BASE_URL` to the final https address |
+| `not_deployed` | The shop's server does not support this operation yet (usually `list` / `update`); ask the shop administrator to update |
+| `validation_error` | The server rejected the request data (422) |
+| `timeout` | No response within the timeout |
+| `network_error` | Could not connect, or the connection dropped |
+| `invalid_response` | The server returned something that is not JSON or not in the expected format |
 
-## Bảo mật
+Server and CLI messages are currently in Vietnamese.
 
-Báo lỗ hổng theo hướng dẫn ở
-[SECURITY.md](https://github.com/storenet-ai/storenet-python/blob/main/SECURITY.md), không mở
-issue công khai.
+## Security
 
-## Giấy phép
+Report vulnerabilities as described in
+[SECURITY.md](https://github.com/storenet-ai/storenet-python/blob/main/SECURITY.md), not in a
+public issue.
+
+## License
 
 MIT.
