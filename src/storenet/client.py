@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import http.client
+import ipaddress
 import json
 import os
 import time
@@ -14,7 +15,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from storenet._signing import auth_headers, format_timestamp
 from storenet._version import __version__
@@ -31,6 +32,35 @@ BACKOFF_BASE = 2.0
 PAGE_SIZE = 100
 RETRYABLE_CODES = frozenset({"503310", "503190", "409171", "timeout", "network_error"})
 EDIT_CONFLICT = "409310"
+
+
+class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
+    # Following a redirect would resend the signed headers to a host the user never configured.
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def _is_uuid(value: str) -> bool:
+    if len(value) not in (32, 36):
+        return False
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_loopback(host: str | None) -> bool:
+    try:
+        return host is not None and ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _base_url_problem(name: str, code: str) -> str:
+    if code == "insecure_base_url":
+        return f"{name} phải dùng https; http chỉ được dùng với địa chỉ IP loopback của máy này."
+    return f"{name} phải là URL đầy đủ, ví dụ https://shop.example.com"
 
 
 @dataclass(frozen=True)
@@ -118,6 +148,15 @@ def _retry_after(headers: Any) -> float | None:
 
 def error_from_response(status: int, raw: bytes, headers: Any = None) -> StorenetError:
     """Map a non-2xx response to a StorenetError."""
+    if 300 <= status < 400:
+        location = headers.get("Location") if headers is not None else None
+        return StorenetError(
+            "redirected",
+            status,
+            f"Máy chủ chuyển hướng (HTTP {status}) tới {location or 'một địa chỉ khác'}. "
+            f"Đặt {ENV_BASE_URL} thành địa chỉ https cuối cùng của cửa hàng rồi chạy lại.",
+            {"location": location},
+        )
     retry_after = _retry_after(headers)
     try:
         body = json.loads(raw.decode("utf-8"))
@@ -201,11 +240,11 @@ class Sites:
         self, site_id: str, prompt: str, idempotency_key: str | None = None
     ) -> dict[str, Any]:
         site_id = site_id.strip()
-        if not site_id:
-            raise ValueError("site_id must not be empty")
+        if not _is_uuid(site_id):
+            raise ValueError("site_id must be a full UUID")
         envelope = self._client._call(
             "POST",
-            f"/shop-designs/{quote(site_id, safe='')}/edits",
+            f"/shop-designs/{site_id}/edits",
             body={"prompt": prompt},
             idempotency_key=idempotency_key,
             retry_once=frozenset({EDIT_CONFLICT}),
@@ -257,9 +296,11 @@ class StorenetClient:
             raise StorenetConfigError("Thiếu cấu hình: " + ", ".join(missing), missing)
         parts = urlsplit(base_url.strip())
         if parts.scheme not in ("http", "https") or not parts.netloc:
-            raise StorenetConfigError(
-                "base_url phải là URL đầy đủ, ví dụ https://shop.example.com", ["base_url"]
-            )
+            code = "missing_config"
+            raise StorenetConfigError(_base_url_problem("base_url", code), ["base_url"], code)
+        if parts.scheme == "http" and not _is_loopback(parts.hostname):
+            code = "insecure_base_url"
+            raise StorenetConfigError(_base_url_problem("base_url", code), ["base_url"], code)
         if max_retries < 0:
             raise ValueError("max_retries must be >= 0")
         root = parts.path.rstrip("/")
@@ -273,7 +314,7 @@ class StorenetClient:
         self.timeout = float(timeout)
         self.max_retries = max_retries
         self.sites = Sites(self)
-        self._urlopen: Callable[..., Any] = urllib.request.urlopen
+        self._urlopen: Callable[..., Any] = urllib.request.build_opener(_RefuseRedirect()).open
         self._sleep: Callable[[float], None] = time.sleep
         self._now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
         self._nonce: Callable[[], str] = lambda: str(uuid.uuid4())
@@ -297,10 +338,8 @@ class StorenetClient:
                 max_retries=max_retries,
             )
         except StorenetConfigError as exc:
-            raise StorenetConfigError(
-                f"{ENV_BASE_URL} phải là URL đầy đủ, ví dụ https://shop.example.com",
-                [ENV_BASE_URL],
-            ) from exc
+            message = _base_url_problem(ENV_BASE_URL, exc.code)
+            raise StorenetConfigError(message, [ENV_BASE_URL], exc.code) from exc
 
     def __repr__(self) -> str:
         return f"StorenetClient(base_url={self.base_url!r}, key_id={self.key_id!r})"
@@ -356,6 +395,8 @@ class StorenetClient:
                     once.discard(exc.code)
                     continue
                 if retries_left <= 0 or not _retryable(exc):
+                    if key is not None:
+                        exc.details["idempotency_key"] = key
                     raise
                 retries_left -= 1
                 if exc.retry_after is not None:
@@ -388,6 +429,7 @@ class StorenetClient:
             with self._urlopen(request, timeout=self.timeout) as response:
                 status = int(response.status)
                 raw = response.read()
+                response_headers = getattr(response, "headers", None)
         except urllib.error.HTTPError as exc:
             raise error_from_response(exc.code, _error_body(exc), exc.headers) from None
         except TimeoutError:
@@ -403,7 +445,7 @@ class StorenetClient:
                 "network_error", 0, f"Kết nối tới {self._origin} bị đứt: {exc!r}"
             ) from None
         if not 200 <= status < 300:
-            raise error_from_response(status, raw)
+            raise error_from_response(status, raw, response_headers)
         try:
             envelope = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):

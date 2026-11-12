@@ -352,3 +352,49 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--version"]) == 0
     assert capsys.readouterr().out.strip() == f"storenet {__version__}"
     assert __version__ == "0.1.0"
+
+
+@pytest.mark.parametrize(("status", "code"), [(503, "503190"), (503, "503310"), (409, "409171")])
+def test_exhausted_create_prints_key_to_rerun_with(
+    server: FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: int,
+    code: str,
+) -> None:
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    server.routes[CREATE] = reply(status, {"error": {"code": code, "message": "bận"}})
+    assert main(["site", "create", "x"]) == 1
+    keys = {request.headers["Idempotency-Key"] for request in server.requests}
+    assert len(server.requests) == 3
+    assert len(keys) == 1
+    err = capsys.readouterr().err
+    assert f"Lỗi {code}" in err
+    assert f"--idempotency-key {keys.pop()} để nhận kết quả, không trừ credit lần nữa." in err
+
+
+def test_exhausted_update_hint_keeps_given_key(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    server.routes[edits(ID_C)] = reply(503, {"error": {"code": "503190", "message": "bận"}})
+    assert main(["site", "update", ID_C, "đỏ", "--idempotency-key", "k-123"]) == 1
+    assert "Chạy lại với --idempotency-key k-123" in capsys.readouterr().err
+
+
+def test_final_error_prints_no_rerun_hint(
+    server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    server.routes[CREATE] = reply(403, {"error": {"code": "403080", "message": "Hết credit"}})
+    assert main(["site", "create", "x"]) == 1
+    assert "--idempotency-key" not in capsys.readouterr().err
+
+
+def test_plain_http_to_remote_host_exits_2(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("STORENET_BASE_URL", "http://shop.example.com")
+    monkeypatch.setenv("STORENET_KEY_ID", KEY_ID)
+    monkeypatch.setenv("STORENET_SECRET", SECRET)
+    assert main(["site", "list"]) == 2
+    assert "STORENET_BASE_URL phải dùng https" in capsys.readouterr().err

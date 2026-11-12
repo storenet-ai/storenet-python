@@ -33,5 +33,5 @@ class StorenetError(Exception):
 class StorenetConfigError(StorenetError):
     """Missing or unusable connection settings; `details["missing"]` names them."""
 
-    def __init__(self, message: str, missing: list[str]) -> None:
-        super().__init__("missing_config", 0, message, {"missing": list(missing)})
+    def __init__(self, message: str, missing: list[str], code: str = "missing_config") -> None:
+        super().__init__(code, 0, message, {"missing": list(missing)})

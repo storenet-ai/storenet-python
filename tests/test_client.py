@@ -3,11 +3,14 @@ from __future__ import annotations
 import io
 import itertools
 import json
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import pytest
@@ -209,7 +212,7 @@ def test_422_detail_is_validation_error() -> None:
     with pytest.raises(StorenetError) as caught:
         client.sites.create("x")
     assert caught.value.code == "validation_error"
-    assert caught.value.details == {"errors": detail}
+    assert caught.value.details["errors"] == detail
 
 
 @pytest.mark.parametrize(
@@ -375,3 +378,129 @@ def test_base_url_with_api_prefix_and_relative_link() -> None:
     site = client.sites.create("x")
     assert transport.requests[0].full_url == f"{BASE}/api/public/v1/shop-designs"
     assert site.url == f"{BASE}/d/tok"
+
+
+EXHAUSTING = {
+    "503310": lambda: coded(503, "503310"),
+    "503190": lambda: coded(503, "503190"),
+    "409171": lambda: coded(409, "409171"),
+    "timeout": lambda: TimeoutError("timed out"),
+    "network": lambda: urllib.error.URLError(ConnectionRefusedError("refused")),
+}
+
+
+@pytest.mark.parametrize("name", list(EXHAUSTING))
+def test_exhausted_post_carries_generated_key(name: str) -> None:
+    client, transport, _ = make_client(*(EXHAUSTING[name]() for _ in range(3)))
+    with pytest.raises(StorenetError) as caught:
+        client.sites.create("x")
+    sent = {header(r, "Idempotency-Key") for r in transport.requests}
+    assert len(transport.requests) == 3
+    assert sent == {caught.value.details["idempotency_key"]}
+
+
+def test_post_error_carries_given_key_and_get_error_carries_none() -> None:
+    client, _, _ = make_client(coded(403, "403080"), coded(503, "503190"), max_retries=0)
+    with pytest.raises(StorenetError) as post:
+        client.sites.update(SITE_ID, "đỏ", idempotency_key="my-key-2")
+    assert post.value.details["idempotency_key"] == "my-key-2"
+    with pytest.raises(StorenetError) as get:
+        client.sites.list()
+    assert "idempotency_key" not in get.value.details
+
+
+@pytest.mark.parametrize(
+    "site_id",
+    ["1b2c3d4e", "not-a-uuid", f"{SITE_ID}/../x", f"{{{SITE_ID}}}", "", "   "],
+)
+def test_update_rejects_non_uuid_before_sending(site_id: str) -> None:
+    client, transport, _ = make_client(ok({"data": EDIT_APPLIED}))
+    with pytest.raises(ValueError):
+        client.sites.update(site_id, "đỏ")
+    assert transport.requests == []
+
+
+def test_update_accepts_hex_uuid_without_dashes() -> None:
+    client, transport, _ = make_client(ok({"data": EDIT_APPLIED}))
+    client.sites.update(SITE_ID.replace("-", ""), "đỏ")
+    assert transport.requests[0].full_url.endswith(f"/{SITE_ID.replace('-', '')}/edits")
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    ["http://shop.example.com", "http://10.0.0.5:8000", "http://localhost.example.com"],
+)
+def test_plain_http_outside_loopback_is_refused(base_url: str) -> None:
+    with pytest.raises(StorenetConfigError) as caught:
+        StorenetClient(base_url, KEY_ID, SECRET)
+    assert caught.value.code == "insecure_base_url"
+    assert caught.value.details == {"missing": ["base_url"]}
+
+
+@pytest.mark.parametrize("base_url", ["http://127.0.0.1:8000", "http://[::1]:8000"])
+def test_plain_http_on_loopback_ip_is_allowed(base_url: str) -> None:
+    assert StorenetClient(base_url, KEY_ID, SECRET).base_url == base_url
+
+
+def test_from_env_keeps_insecure_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STORENET_BASE_URL", "http://shop.example.com")
+    monkeypatch.setenv("STORENET_KEY_ID", KEY_ID)
+    monkeypatch.setenv("STORENET_SECRET", SECRET)
+    with pytest.raises(StorenetConfigError) as caught:
+        StorenetClient.from_env()
+    assert caught.value.code == "insecure_base_url"
+    assert caught.value.details == {"missing": ["STORENET_BASE_URL"]}
+    assert "STORENET_BASE_URL" in caught.value.message
+
+
+@pytest.fixture
+def redirecting() -> Iterator[tuple[str, list[dict[str, str]]]]:
+    seen: list[dict[str, str]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            seen.append(dict(self.headers.items()))
+            if self.path.startswith("/elsewhere"):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"data": [], "meta": {"total_pages": 1}}')
+                return
+            self.send_response(301)
+            self.send_header("Location", "/elsewhere")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args: object) -> None:
+            return None
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.02})
+    thread.start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}", seen
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def test_redirect_is_not_followed(redirecting: tuple[str, list[dict[str, str]]]) -> None:
+    url, seen = redirecting
+    client = StorenetClient(url, KEY_ID, SECRET, max_retries=0)
+    with pytest.raises(StorenetError) as caught:
+        client.sites.list()
+    assert caught.value.code == "redirected"
+    assert caught.value.status == 301
+    assert caught.value.details == {"location": "/elsewhere"}
+    assert "STORENET_BASE_URL" in caught.value.message
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize("status", [301, 302, 307, 308])
+def test_3xx_maps_to_redirected(status: int) -> None:
+    target = "https://other.example.com/x"
+    failure = http_error(status, b"", {"Location": target})
+    client, transport, sleeps = make_client(failure, ok({"data": SITE}))
+    with pytest.raises(StorenetError) as caught:
+        client.sites.create("x")
+    assert caught.value.code == "redirected"
+    assert caught.value.details["location"] == target
+    assert len(transport.requests) == 1
+    assert sleeps == []

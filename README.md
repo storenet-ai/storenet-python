@@ -31,6 +31,9 @@ export STORENET_KEY_ID="<key id>"
 export STORENET_SECRET="<secret>"
 ```
 
+`STORENET_BASE_URL` phải dùng https; http chỉ được chấp nhận với địa chỉ IP loopback của chính
+máy bạn. Gói không đi theo chuyển hướng (3xx): hãy đặt đúng địa chỉ https cuối cùng của cửa hàng.
+
 Giữ `STORENET_SECRET` như mật khẩu: không commit, không dán vào issue. Gói không bao giờ in
 secret ra màn hình hay đưa vào thông điệp lỗi.
 
@@ -101,7 +104,7 @@ hết các trang.
 |---|---|
 | 0 | Thành công |
 | 1 | Máy chủ trả lỗi, AI không đổi gì, hoặc tiền tố ID không khớp mẫu nào |
-| 2 | Sai cú pháp, thiếu biến môi trường, hoặc tiền tố ID khớp nhiều mẫu |
+| 2 | Sai cú pháp, thiếu hoặc sai biến môi trường, hoặc tiền tố ID khớp nhiều mẫu |
 
 ## Dùng làm thư viện
 
@@ -125,6 +128,8 @@ for item in client.sites.list():
 
 - `sites.update` trả `Edit` cả khi AI không đổi gì (`outcome` là `refused` hoặc `empty`); chỉ lỗi
   thật mới ném `StorenetError`.
+- `sites.update` cần ID đầy đủ (UUID) như trong `Site.id`; giá trị khác ném `ValueError` trước khi
+  gửi. Chỉ lệnh `storenet` mới tự tìm ID từ vài ký tự đầu.
 - `StorenetClient(..., timeout=130, max_retries=2)`: timeout tính theo từng request.
 
 ## Gọi lại tự động
@@ -138,6 +143,10 @@ lỗi tạm thời, gói gọi lại tối đa `max_retries` lần (mặc địn
 
 Các lỗi 4xx khác (ví dụ `403080` hết credit) không được gọi lại.
 
+Khi `create` / `update` vẫn lỗi sau mọi lần gọi lại, `StorenetError.details["idempotency_key"]`
+giữ khoá đã gửi. Lượt đó có thể đã chạy xong ở máy chủ: gọi lại với đúng khoá này để nhận kết
+quả mà không trừ credit lần nữa. Lệnh `storenet` in sẵn gợi ý `--idempotency-key <khoá>`.
+
 ## Lỗi
 
 Lỗi do máy chủ trả mang đúng mã của máy chủ trong `StorenetError.code` (ví dụ `"409310"`), kèm
@@ -146,6 +155,8 @@ Lỗi do máy chủ trả mang đúng mã của máy chủ trong `StorenetError.
 | Mã | Khi nào |
 |---|---|
 | `missing_config` | Thiếu biến môi trường hoặc `base_url` không phải URL đầy đủ (`StorenetConfigError`) |
+| `insecure_base_url` | `base_url` dùng http tới máy khác ngoài địa chỉ IP loopback (`StorenetConfigError`) |
+| `redirected` | Máy chủ trả chuyển hướng 3xx; `details["location"]` là địa chỉ đích. Đặt `STORENET_BASE_URL` thành địa chỉ https cuối cùng |
 | `not_deployed` | Cửa hàng chưa lên bản máy chủ hỗ trợ thao tác này (thường gặp ở `list` / `update`); báo quản trị cửa hàng cập nhật |
 | `validation_error` | Máy chủ từ chối dữ liệu gửi lên (422) |
 | `timeout` | Quá thời gian chờ phản hồi |

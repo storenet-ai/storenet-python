@@ -6,18 +6,19 @@ import argparse
 import contextlib
 import json
 import sys
-import uuid
 from datetime import datetime
 from typing import Any
 
 from storenet._version import __version__
-from storenet.client import Edit, Site, StorenetClient
+from storenet.client import Edit, Site, StorenetClient, _is_uuid
 from storenet.errors import StorenetConfigError, StorenetError
 
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_USAGE = 2
 SHORT_ID = 8
+# The call may have finished on the server after the client stopped waiting or retrying.
+MAYBE_DONE = frozenset({"timeout", "network_error", "409171", "503190", "503310"})
 
 
 class _Exit(Exception):
@@ -104,19 +105,9 @@ def _non_empty(prompt: str) -> str:
     return prompt
 
 
-def _is_full_id(ref: str) -> bool:
-    if len(ref) not in (32, 36):
-        return False
-    try:
-        uuid.UUID(ref)
-    except ValueError:
-        return False
-    return True
-
-
 def _resolve_id(client: StorenetClient, ref: str) -> str:
     ref = ref.strip()
-    if _is_full_id(ref):
+    if _is_uuid(ref):
         return ref
     if not ref:
         raise _Exit(EXIT_USAGE, "ID đang rỗng.")
@@ -221,6 +212,13 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
     except StorenetError as exc:
         print(f"Lỗi {exc.code}: {exc.message}", file=sys.stderr)
+        key = exc.details.get("idempotency_key")
+        if exc.code in MAYBE_DONE and isinstance(key, str):
+            print(
+                "Lượt này có thể đã chạy xong ở máy chủ. Chạy lại với "
+                f"--idempotency-key {key} để nhận kết quả, không trừ credit lần nữa.",
+                file=sys.stderr,
+            )
         return EXIT_FAILED
     except KeyboardInterrupt:
         return 130
