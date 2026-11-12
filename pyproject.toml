@@ -35,11 +35,14 @@ storenet = "storenet.cli:main"
 Homepage = "https://storenet.ai"
 Source = "https://github.com/storenet-ai/storenet-python"
 
+# Metadata 2.4 is the newest version every index and installer we target accepts.
 [tool.hatch.build.targets.wheel]
 packages = ["src/storenet"]
+core-metadata-version = "2.4"
 
 [tool.hatch.build.targets.sdist]
 include = ["src/storenet", "README.md", "LICENSE", "pyproject.toml"]
+core-metadata-version = "2.4"
 
 [tool.ruff]
 target-version = "py310"
