@@ -124,9 +124,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archives", nargs="+", type=Path)
     parser.add_argument("--deny", action="append", default=[], help="thêm một chuỗi cấm")
+    parser.add_argument(
+        "--require-deny",
+        action="store_true",
+        help=f"thoát 2 nếu --deny và {DENY_ENV} đều rỗng",
+    )
     args = parser.parse_args(argv)
     extra = [*args.deny, *os.environ.get(DENY_ENV, "").split(",")]
     extra = [word.strip() for word in extra if word.strip()]
+    if args.require_deny and not extra:
+        print(
+            f"Danh sách chuỗi cấm bổ sung đang rỗng: đặt {DENY_ENV} hoặc --deny.", file=sys.stderr
+        )
+        return 2
     wheels = [p for p in args.archives if p.name.endswith(".whl")]
     sdists = [p for p in args.archives if p.name.endswith(".tar.gz")]
     unknown = [p for p in args.archives if p not in wheels and p not in sdists]

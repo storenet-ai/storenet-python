@@ -140,3 +140,24 @@ def test_needs_one_wheel_and_one_sdist(tmp_path: Path, kind: str) -> None:
         "unknown": [wheel, sdist, str(stray)],
     }[kind]
     assert check_dist.main(argv) == 2
+
+
+def test_require_deny_with_empty_list_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(check_dist.DENY_ENV, " , ")
+    assert run(tmp_path, WHEEL_FILES, SDIST_FILES, "--require-deny") == 2
+    assert check_dist.DENY_ENV in capsys.readouterr().err
+    monkeypatch.delenv(check_dist.DENY_ENV)
+    assert run(tmp_path, WHEEL_FILES, SDIST_FILES, "--require-deny") == 2
+
+
+def test_require_deny_with_words_scans_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(check_dist.DENY_ENV, "acmecorp")
+    assert run(tmp_path, WHEEL_FILES, SDIST_FILES, "--require-deny") == 0
+    bad = {**SDIST_FILES, "storenet-0.1.0/README.md": b"internal AcmeCorp\n"}
+    assert run(tmp_path, WHEEL_FILES, bad, "--require-deny") == 1
+    monkeypatch.delenv(check_dist.DENY_ENV)
+    assert run(tmp_path, WHEEL_FILES, SDIST_FILES, "--require-deny", "--deny", "x1y2") == 0
