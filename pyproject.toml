@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "storenet"
-version = "0.1.0rc1"
+version = "0.1.0"
 description = "Command-line tool and Python library for the StoreNet Partner API: create, edit with AI and list shop web designs."
 readme = "README.md"
 requires-python = ">=3.10"
