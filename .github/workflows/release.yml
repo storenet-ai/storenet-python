@@ -1,0 +1,148 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: python -m pip install -e . -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy
+        run: mypy src
+      - name: Pytest
+        run: pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_final: ${{ steps.version.outputs.is_final }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Tag must equal the pyproject version
+        id: version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          project_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          if [ "$tag_version" != "$project_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pyproject version $project_version"
+            exit 1
+          fi
+          echo "version=$project_version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_final=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_final=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Final tags must not ship PLACEHOLDER
+        if: steps.version.outputs.is_final == 'true'
+        run: |
+          set +e
+          grep -nF PLACEHOLDER pyproject.toml LICENSE SECURITY.md README.md CHANGELOG.md
+          found=$?
+          set -e
+          if [ "$found" -ne 1 ]; then
+            echo "::error::Replace every PLACEHOLDER above (or restore the missing file) before a final tag"
+            exit 1
+          fi
+      - name: Build
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m build
+      - name: Check wheel and sdist contents
+        env:
+          STORENET_DIST_DENY: ${{ secrets.STORENET_DIST_DENY }}
+        run: python tools/check_dist.py --require-deny dist/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/storenet
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  smoke:
+    needs: [build, testpypi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install from TestPyPI (the index can lag behind the upload)
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if python -m pip install --no-cache-dir --no-deps \
+                --index-url https://test.pypi.org/simple/ "storenet==${VERSION}"; then
+              exit 0
+            fi
+            echo "Attempt ${attempt}: storenet ${VERSION} not installable yet, waiting 30 s"
+            sleep 30
+          done
+          exit 1
+      - name: Version matches the tag
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: test "$(storenet --version)" = "storenet ${VERSION}"
+      - name: Missing configuration exits 2
+        run: |
+          set +e
+          env -u STORENET_BASE_URL -u STORENET_KEY_ID -u STORENET_SECRET storenet site list
+          code=$?
+          test "$code" -eq 2
+
+  pypi:
+    needs: [build, smoke]
+    if: needs.build.outputs.is_final == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/storenet
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1

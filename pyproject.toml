@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "storenet"
+version = "0.1.0rc1"
+description = "Command-line tool and Python library for the StoreNet Partner API: create, edit with AI and list shop web designs."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "StoreNet", email = "support@storenet.ai" }]
+keywords = ["storenet", "partner-api", "cli", "shop-design"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.scripts]
+storenet = "storenet.cli:main"
+
+[project.urls]
+Homepage = "https://storenet.ai"
+Source = "https://github.com/storenet-ai/storenet-python"
+
+# Metadata 2.4 is the newest version every index and installer we target accepts.
+[tool.hatch.build.targets.wheel]
+packages = ["src/storenet"]
+core-metadata-version = "2.4"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/storenet", "README.md", "LICENSE", "pyproject.toml"]
+core-metadata-version = "2.4"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
