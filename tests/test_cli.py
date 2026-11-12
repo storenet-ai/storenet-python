@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -351,7 +352,10 @@ def test_secret_never_printed(server: FakeServer, capsys: pytest.CaptureFixture[
 def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--version"]) == 0
     assert capsys.readouterr().out.strip() == f"storenet {__version__}"
-    assert __version__ == "0.1.0"
+    pyproject = (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE)
+    assert match is not None
+    assert __version__ == match.group(1)
 
 
 @pytest.mark.parametrize(("status", "code"), [(503, "503190"), (503, "503310"), (409, "409171")])
