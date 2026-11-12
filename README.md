@@ -154,7 +154,7 @@ Errors returned by the server carry the server's code in `StorenetError.code` (f
 | `network_error` | Could not connect, or the connection dropped |
 | `invalid_response` | The server returned something that is not JSON or not in the expected format |
 
-Server and CLI messages are currently in Vietnamese.
+Error messages that come from the server may be in Vietnamese.
 
 ## Security
 

@@ -55,18 +55,18 @@ def scan_text(name: str, text: str, extra_denied: Iterable[str] = ()) -> list[st
     """Problems in one member's text: forbidden strings and URLs outside the allowlist."""
     lowered = text.lower()
     problems = [
-        f"{name}: chứa chuỗi cấm {token!r}"
+        f"{name}: contains forbidden string {token!r}"
         for token in FORBIDDEN
         if token and token.lower() in lowered
     ]
     # Deny-list words are private: the release log is public, so name only their position.
     problems.extend(
-        f"{name}: chứa chuỗi cấm bổ sung #{index}"
+        f"{name}: contains extra forbidden string #{index}"
         for index, token in enumerate(extra_denied, start=1)
         if token and token.lower() in lowered
     )
     problems.extend(
-        f"{name}: URL ngoài allowlist {url!r}"
+        f"{name}: URL outside the allowlist {url!r}"
         for url in URL_PATTERN.findall(text)
         if not _url_allowed(url)
     )
@@ -85,10 +85,10 @@ def _check_members(
         count += 1
         label = f"{archive}: {name}"
         if not any(pattern.fullmatch(name) for pattern in allowed):
-            problems.append(f"{label}: không nằm trong whitelist")
+            problems.append(f"{label}: not in the member allowlist")
         problems.extend(scan_text(label, data.decode("utf-8", "replace"), extra_denied))
     if count == 0:
-        problems.append(f"{archive}: rỗng")
+        problems.append(f"{archive}: empty")
     return problems
 
 
@@ -106,7 +106,7 @@ def _sdist_members(path: Path, problems: list[str]) -> Iterable[tuple[str, bytes
                 continue
             handle = sdist.extractfile(info) if info.isfile() else None
             if handle is None:
-                problems.append(f"{path.name}: {info.name}: không phải tệp thường")
+                problems.append(f"{path.name}: {info.name}: not a regular file")
                 continue
             yield info.name, handle.read()
 
@@ -129,25 +129,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Check every given archive; exit 1 on any problem, 2 on bad input."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archives", nargs="+", type=Path)
-    parser.add_argument("--deny", action="append", default=[], help="thêm một chuỗi cấm")
+    parser.add_argument("--deny", action="append", default=[], help="add a forbidden string")
     parser.add_argument(
         "--require-deny",
         action="store_true",
-        help=f"thoát 2 nếu --deny và {DENY_ENV} đều rỗng",
+        help=f"exit 2 when both --deny and {DENY_ENV} are empty",
     )
     args = parser.parse_args(argv)
     extra = [*args.deny, *os.environ.get(DENY_ENV, "").split(",")]
     extra = [word.strip() for word in extra if word.strip()]
     if args.require_deny and not extra:
         print(
-            f"Danh sách chuỗi cấm bổ sung đang rỗng: đặt {DENY_ENV} hoặc --deny.", file=sys.stderr
+            f"The extra forbidden-string list is empty: set {DENY_ENV} or pass --deny.",
+            file=sys.stderr,
         )
         return 2
     wheels = [p for p in args.archives if p.name.endswith(".whl")]
     sdists = [p for p in args.archives if p.name.endswith(".tar.gz")]
     unknown = [p for p in args.archives if p not in wheels and p not in sdists]
     if unknown or not wheels or not sdists:
-        print("Cần ít nhất một .whl và một .tar.gz, không tệp nào khác.", file=sys.stderr)
+        print("Pass at least one .whl and one .tar.gz, and nothing else.", file=sys.stderr)
         return 2
     problems: list[str] = []
     for wheel in wheels:
@@ -159,7 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if problems:
         return 1
     names = ", ".join(p.name for p in (*wheels, *sdists))
-    print(f"OK: {names} ({len(extra)} chuỗi cấm bổ sung)")
+    print(f"OK: {names} ({len(extra)} extra forbidden strings)")
     return 0
 
 

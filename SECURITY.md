@@ -1,20 +1,20 @@
-# Chính sách bảo mật
+# Security policy
 
-## Phiên bản được hỗ trợ
+## Supported versions
 
-| Phiên bản | Hỗ trợ |
+| Version | Supported |
 |---|---|
-| 0.1.x | Có |
+| 0.1.x | Yes |
 
-## Báo lỗ hổng
+## Reporting a vulnerability
 
-Gửi email tới **PLACEHOLDER**, không mở issue hay pull request công khai. Nêu:
+Email **PLACEHOLDER**. Do not open a public issue or pull request. Include:
 
-- phiên bản `storenet` và Python,
-- cách tái hiện,
-- ảnh hưởng bạn thấy được.
+- the `storenet` and Python versions,
+- steps to reproduce,
+- the impact you observed.
 
-Chúng tôi xác nhận trong vòng 3 ngày làm việc và báo kế hoạch xử lý sau khi đánh giá.
+We acknowledge reports within 3 business days and share a plan once we have assessed the issue.
 
-Đừng gửi khoá API thật hay secret trong báo cáo. Nếu lỡ lộ secret, hãy thu hồi khoá trong trang
-quản trị cửa hàng rồi tạo khoá mới.
+Never include a real API key or secret in a report. If a secret has leaked, revoke the key in
+your shop's admin panel and create a new one.

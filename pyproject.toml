@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "storenet"
 version = "0.1.0"
-description = "CLI và thư viện Python cho StoreNet Partner API: tạo, sửa bằng AI và liệt kê mẫu thiết kế web."
+description = "Command-line tool and Python library for the StoreNet Partner API: create, edit with AI and list shop web designs."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

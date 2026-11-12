@@ -1,14 +1,14 @@
 # Changelog
 
-Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/); số phiên bản theo
-[Semantic Versioning](https://semver.org/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
+uses [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - chưa phát hành
+## [0.1.0] - unreleased
 
-### Thêm
+### Added
 
-- Lệnh `storenet site create | update | list` và `storenet --version`.
-- Thư viện `StorenetClient` với `sites.create`, `sites.update`, `sites.list`.
-- Tự ký HMAC-SHA256 theo hợp đồng Partner API.
-- Gọi lại lỗi tạm thời với cùng `Idempotency-Key`; mã lỗi `not_deployed` cho cửa hàng chưa
-  hỗ trợ thao tác.
+- The `storenet site create | update | list` commands and `storenet --version`.
+- The `StorenetClient` library with `sites.create`, `sites.update` and `sites.list`.
+- HMAC-SHA256 request signing as the Partner API requires.
+- Retries of temporary errors with the same `Idempotency-Key`, and the `not_deployed` error code
+  for shops whose server does not support an operation yet.

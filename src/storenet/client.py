@@ -59,8 +59,8 @@ def _is_loopback(host: str | None) -> bool:
 
 def _base_url_problem(name: str, code: str) -> str:
     if code == "insecure_base_url":
-        return f"{name} phải dùng https; http chỉ được dùng với địa chỉ IP loopback của máy này."
-    return f"{name} phải là URL đầy đủ, ví dụ https://shop.example.com"
+        return f"{name} must use https; plain http is allowed only for a loopback IP address."
+    return f"{name} must be a full URL, for example https://shop.example.com"
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ def _invalid(message: str, status: int = 200) -> StorenetError:
 def _text(payload: Mapping[str, Any], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str):
-        raise _invalid(f"Phản hồi thiếu trường '{key}'.")
+        raise _invalid(f"Response is missing the field '{key}'.")
     return value
 
 
@@ -108,14 +108,14 @@ def _number(payload: Mapping[str, Any], key: str) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise _invalid(f"Trường '{key}' không phải số.")
+        raise _invalid(f"Field '{key}' is not a number.")
     return float(value)
 
 
 def _texts(payload: Mapping[str, Any], key: str) -> list[str]:
     value = payload.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise _invalid(f"Trường '{key}' không phải danh sách chuỗi.")
+        raise _invalid(f"Field '{key}' is not a list of strings.")
     return list(value)
 
 
@@ -153,8 +153,8 @@ def error_from_response(status: int, raw: bytes, headers: Any = None) -> Storene
         return StorenetError(
             "redirected",
             status,
-            f"Máy chủ chuyển hướng (HTTP {status}) tới {location or 'một địa chỉ khác'}. "
-            f"Đặt {ENV_BASE_URL} thành địa chỉ https cuối cùng của cửa hàng rồi chạy lại.",
+            f"The server redirected (HTTP {status}) to {location or 'another address'}. "
+            f"Set {ENV_BASE_URL} to the shop's final https address and try again.",
             {"location": location},
         )
     retry_after = _retry_after(headers)
@@ -164,7 +164,7 @@ def error_from_response(status: int, raw: bytes, headers: Any = None) -> Storene
         return StorenetError(
             "invalid_response",
             status,
-            f"Máy chủ trả HTTP {status} không phải JSON.",
+            f"The server returned HTTP {status} with a body that is not JSON.",
             {"body": _snippet(raw)},
             retry_after=retry_after,
         )
@@ -184,18 +184,21 @@ def error_from_response(status: int, raw: bytes, headers: Any = None) -> Storene
             return StorenetError(
                 "not_deployed",
                 status,
-                "Cửa hàng chưa có tính năng này: máy chủ chưa lên bản hỗ trợ. "
-                "Hãy báo quản trị cửa hàng cập nhật.",
+                "The shop's server does not support this operation yet. "
+                "Ask the shop administrator to update it.",
                 {"detail": detail},
             )
         if status == 422 and isinstance(detail, list):
             return StorenetError(
-                "validation_error", status, "Dữ liệu gửi lên không hợp lệ.", {"errors": detail}
+                "validation_error",
+                status,
+                "The server rejected the request data.",
+                {"errors": detail},
             )
     return StorenetError(
         "invalid_response",
         status,
-        f"Máy chủ trả HTTP {status} với nội dung không nhận ra.",
+        f"The server returned HTTP {status} with an unrecognised body.",
         {"body": _snippet(raw)},
         retry_after=retry_after,
     )
@@ -261,9 +264,9 @@ class Sites:
             data = envelope.get("data")
             meta = envelope.get("meta")
             if not isinstance(data, list) or not isinstance(meta, dict):
-                raise _invalid("Phản hồi danh sách thiếu 'data' hoặc 'meta'.")
+                raise _invalid("List response is missing 'data' or 'meta'.")
             if not all(isinstance(item, dict) for item in data):
-                raise _invalid("Phần tử danh sách không phải object.")
+                raise _invalid("List item is not an object.")
             items.extend(data)
             total_pages = meta.get("total_pages")
             if not data or not isinstance(total_pages, int) or page >= total_pages:
@@ -274,7 +277,7 @@ class Sites:
 def _data_object(envelope: Mapping[str, Any]) -> dict[str, Any]:
     data = envelope.get("data")
     if not isinstance(data, dict):
-        raise _invalid("Phản hồi thiếu 'data'.")
+        raise _invalid("Response is missing 'data'.")
     return data
 
 
@@ -293,7 +296,7 @@ class StorenetClient:
         given = {"base_url": base_url, "key_id": key_id, "secret": secret}
         missing = [name for name, value in given.items() if not (value or "").strip()]
         if missing:
-            raise StorenetConfigError("Thiếu cấu hình: " + ", ".join(missing), missing)
+            raise StorenetConfigError("Missing configuration: " + ", ".join(missing), missing)
         parts = urlsplit(base_url.strip())
         if parts.scheme not in ("http", "https") or not parts.netloc:
             code = "missing_config"
@@ -328,7 +331,9 @@ class StorenetClient:
         values = {name: os.environ.get(name, "").strip() for name in names}
         missing = [name for name in names if not values[name]]
         if missing:
-            raise StorenetConfigError("Thiếu biến môi trường: " + ", ".join(missing), missing)
+            raise StorenetConfigError(
+                "Missing environment variables: " + ", ".join(missing), missing
+            )
         try:
             return cls(
                 values[ENV_BASE_URL],
@@ -438,11 +443,11 @@ class StorenetClient:
             if isinstance(exc.reason, TimeoutError):
                 raise self._timeout() from None
             raise StorenetError(
-                "network_error", 0, f"Không kết nối được tới {self._origin}: {exc.reason}"
+                "network_error", 0, f"Could not connect to {self._origin}: {exc.reason}"
             ) from None
         except (http.client.HTTPException, OSError) as exc:
             raise StorenetError(
-                "network_error", 0, f"Kết nối tới {self._origin} bị đứt: {exc!r}"
+                "network_error", 0, f"Connection to {self._origin} dropped: {exc!r}"
             ) from None
         if not 200 <= status < 300:
             raise error_from_response(status, raw, response_headers)
@@ -452,14 +457,14 @@ class StorenetClient:
             raise StorenetError(
                 "invalid_response",
                 status,
-                "Máy chủ trả nội dung không phải JSON.",
+                "The server returned a body that is not JSON.",
                 {"body": _snippet(raw)},
             ) from None
         if not isinstance(envelope, dict) or "data" not in envelope:
-            raise _invalid("Phản hồi không có 'data'.", status)
+            raise _invalid("Response has no 'data'.", status)
         return envelope
 
     def _timeout(self) -> StorenetError:
         return StorenetError(
-            "timeout", 0, f"Quá {self.timeout:g} giây không nhận được phản hồi từ {self._origin}."
+            "timeout", 0, f"No response from {self._origin} within {self.timeout:g} seconds."
         )

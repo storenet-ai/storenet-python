@@ -31,36 +31,42 @@ class _Exit(Exception):
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="storenet",
-        description="Tạo, sửa bằng AI và liệt kê mẫu thiết kế web qua StoreNet Partner API.",
-        epilog="Cần 3 biến môi trường: STORENET_BASE_URL, STORENET_KEY_ID, STORENET_SECRET.",
+        description="Create, edit with AI and list shop designs via the StoreNet Partner API.",
+        epilog="Environment: STORENET_BASE_URL, STORENET_KEY_ID, STORENET_SECRET.",
     )
     parser.add_argument("--version", action="version", version=f"storenet {__version__}")
-    groups = parser.add_subparsers(dest="group", metavar="NHÓM")
+    groups = parser.add_subparsers(dest="group", metavar="GROUP")
     groups.required = True
-    site = groups.add_parser("site", help="mẫu thiết kế web")
-    actions = site.add_subparsers(dest="action", metavar="LỆNH")
+    site = groups.add_parser("site", help="web designs")
+    actions = site.add_subparsers(dest="action", metavar="COMMAND")
     actions.required = True
 
-    create = actions.add_parser("create", help="tạo mẫu mới từ mô tả cửa hàng")
-    create.add_argument("prompt", nargs="?", metavar="MÔ_TẢ", help="mô tả cửa hàng")
-    create.add_argument("--file", "-f", metavar="TỆP", help="đọc mô tả từ tệp ('-' là stdin)")
+    create = actions.add_parser("create", help="create a design from a shop description")
+    create.add_argument("prompt", nargs="?", metavar="DESCRIPTION", help="shop description")
+    create.add_argument(
+        "--file", "-f", metavar="FILE", help="read the description from a file ('-' for stdin)"
+    )
     _common_flags(create)
 
-    update = actions.add_parser("update", help="sửa mẫu bằng AI")
-    update.add_argument("site_id", metavar="ID", help="ID đầy đủ hoặc 8 ký tự đầu")
-    update.add_argument("prompt", metavar="YÊU_CẦU", help="yêu cầu sửa, ví dụ 'đổi sang tông đỏ'")
+    update = actions.add_parser("update", help="edit a design with AI")
+    update.add_argument("site_id", metavar="ID", help="full ID or its first 8 characters")
+    update.add_argument(
+        "prompt", metavar="REQUEST", help="edit request, e.g. 'switch to a red colour scheme'"
+    )
     _common_flags(update)
 
-    listing = actions.add_parser("list", help="liệt kê mẫu đã tạo qua API")
-    listing.add_argument("--json", action="store_true", help="in nguyên payload JSON")
+    listing = actions.add_parser("list", help="list designs created through the API")
+    listing.add_argument("--json", action="store_true", help="print the raw JSON payload")
     return parser
 
 
 def _common_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--idempotency-key", metavar="KHOÁ", help="khoá chống trùng; gọi lại cùng khoá an toàn"
+        "--idempotency-key",
+        metavar="KEY",
+        help="deduplication key; retrying with the same key is safe",
     )
-    parser.add_argument("--json", action="store_true", help="in nguyên payload JSON")
+    parser.add_argument("--json", action="store_true", help="print the raw JSON payload")
 
 
 def _amount(value: float) -> str:
@@ -84,7 +90,7 @@ def _bullets(title: str, lines: list[str]) -> None:
 
 def _read_prompt(args: argparse.Namespace) -> str:
     if args.prompt is not None and args.file is not None:
-        raise _Exit(EXIT_USAGE, "chỉ dùng MÔ_TẢ hoặc --file, không dùng cả hai.")
+        raise _Exit(EXIT_USAGE, "pass DESCRIPTION or --file, not both.")
     if args.file is not None:
         try:
             if args.file == "-":
@@ -92,16 +98,16 @@ def _read_prompt(args: argparse.Namespace) -> str:
             with open(args.file, encoding="utf-8") as handle:
                 return handle.read()
         except (OSError, UnicodeDecodeError) as exc:
-            raise _Exit(EXIT_USAGE, f"không đọc được tệp {args.file}: {exc}") from None
+            raise _Exit(EXIT_USAGE, f"cannot read file {args.file}: {exc}") from None
     if args.prompt is None:
-        raise _Exit(EXIT_USAGE, "thiếu mô tả: truyền MÔ_TẢ hoặc --file TỆP.")
+        raise _Exit(EXIT_USAGE, "missing description: pass DESCRIPTION or --file FILE.")
     return str(args.prompt)
 
 
 def _non_empty(prompt: str) -> str:
     prompt = prompt.strip()
     if not prompt:
-        raise _Exit(EXIT_USAGE, "nội dung yêu cầu đang rỗng.")
+        raise _Exit(EXIT_USAGE, "the text is empty.")
     return prompt
 
 
@@ -110,38 +116,40 @@ def _resolve_id(client: StorenetClient, ref: str) -> str:
     if _is_uuid(ref):
         return ref
     if not ref:
-        raise _Exit(EXIT_USAGE, "ID đang rỗng.")
+        raise _Exit(EXIT_USAGE, "the ID is empty.")
     matches = [site for site in client.sites.list() if site.id.lower().startswith(ref.lower())]
     if not matches:
-        raise _Exit(EXIT_FAILED, f"không có mẫu nào có ID bắt đầu bằng '{ref}'.")
+        raise _Exit(EXIT_FAILED, f"no design has an ID starting with '{ref}'.")
     if len(matches) > 1:
         ids = "\n".join(f"  {site.id}  {site.name}" for site in matches)
-        raise _Exit(EXIT_USAGE, f"'{ref}' khớp {len(matches)} mẫu, hãy gõ dài hơn:\n{ids}")
+        raise _Exit(
+            EXIT_USAGE, f"'{ref}' matches {len(matches)} designs, type more characters:\n{ids}"
+        )
     return matches[0].id
 
 
 def _print_site(site: Site) -> None:
-    print(f"Đã tạo: {site.name} ({site.industry})")
+    print(f"Created: {site.name} ({site.industry})")
     print(f"ID: {site.id}")
-    print(f"Xem: {site.url}")
+    print(f"Preview: {site.url}")
 
 
 def _print_edit(edit: Edit) -> None:
     if edit.applied:
-        _bullets("Đã đổi:", edit.changed)
+        _bullets("Changed:", edit.changed)
     else:
-        print(f"AI không đổi gì ({edit.outcome}).")
-    _bullets("Không làm được:", edit.refused + edit.unsupported)
+        print(f"The AI changed nothing ({edit.outcome}).")
+    _bullets("Not done:", edit.refused + edit.unsupported)
     if edit.applied:
-        credit = f"Credit: −{_amount(edit.credits_used)}"
+        credit = f"Credits: -{_amount(edit.credits_used)}"
         if edit.credits_available is not None:
-            credit += f" (còn {_amount(edit.credits_available)})"
+            credit += f" ({_amount(edit.credits_available)} left)"
         print(credit)
-    print(f"Xem: {edit.url}")
+    print(f"Preview: {edit.url}")
 
 
 def _print_table(sites: list[Site]) -> None:
-    header = ("ID", "TÊN", "NGÀNH", "CẬP NHẬT", "LINK")
+    header = ("ID", "NAME", "INDUSTRY", "UPDATED", "LINK")
     rows = [
         (site.id[:SHORT_ID], site.name, site.industry, _when(site.updated_at), site.url)
         for site in sites
@@ -150,7 +158,7 @@ def _print_table(sites: list[Site]) -> None:
     for row in [header, *rows]:
         cells = [cell.ljust(width) for cell, width in zip(row[:-1], widths, strict=True)]
         print("  ".join([*cells, row[-1]]))
-    print(f"Tổng: {len(sites)} mẫu")
+    print(f"Total: {len(sites)} designs")
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -180,14 +188,14 @@ def _run(args: argparse.Namespace) -> int:
         _print_json(items)
         return EXIT_OK
     if not items:
-        print('Chưa có mẫu thiết kế nào. Tạo mẫu đầu tiên: storenet site create "<mô tả>"')
+        print('No designs yet. Create the first one: storenet site create "<description>"')
         return EXIT_OK
     _print_table([client._site(item) for item in items])
     return EXIT_OK
 
 
 def _tolerate_unencodable_output() -> None:
-    # Vietnamese text on a non-UTF-8 console must not crash the command.
+    # Shop names and server messages may be non-ASCII; a non-UTF-8 console must not crash.
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
@@ -205,18 +213,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run(args)
     except _Exit as exc:
-        print(f"Lỗi: {exc.message}", file=sys.stderr)
+        print(f"Error: {exc.message}", file=sys.stderr)
         return exc.code
     except StorenetConfigError as exc:
-        print(f"Lỗi: {exc.message}", file=sys.stderr)
+        print(f"Error: {exc.message}", file=sys.stderr)
         return EXIT_USAGE
     except StorenetError as exc:
-        print(f"Lỗi {exc.code}: {exc.message}", file=sys.stderr)
+        print(f"Error {exc.code}: {exc.message}", file=sys.stderr)
         key = exc.details.get("idempotency_key")
         if exc.code in MAYBE_DONE and isinstance(key, str):
             print(
-                "Lượt này có thể đã chạy xong ở máy chủ. Chạy lại với "
-                f"--idempotency-key {key} để nhận kết quả, không trừ credit lần nữa.",
+                "This request may have completed on the server. Run again with "
+                f"--idempotency-key {key} to get the result without being charged again.",
                 file=sys.stderr,
             )
         return EXIT_FAILED

@@ -22,11 +22,11 @@ BASE = "https://shop.example.com"
 KEY_ID = "pk_test_fake"
 SECRET = "sk_test_fake_secret_value"
 SITE_ID = "1b2c3d4e-0000-4000-8000-000000000001"
-SITE = {"id": SITE_ID, "name": "Tiệm Bánh Kem", "industry": "bakery", "url": f"{BASE}/d/tok"}
+SITE = {"id": SITE_ID, "name": "Cream Bakery", "industry": "bakery", "url": f"{BASE}/d/tok"}
 EDIT_APPLIED = {
     "id": SITE_ID,
     "outcome": "applied",
-    "changed": ["Màu — đổi bộ màu"],
+    "changed": ["Colours - new palette"],
     "refused": [],
     "unsupported": [],
     "credits_used": 1.5,
@@ -65,7 +65,7 @@ def http_error(
 
 
 def coded(status: int, code: str, headers: dict[str, str] | None = None) -> Exception:
-    body = {"error": {"code": code, "message": f"lỗi {code}", "details": {}}}
+    body = {"error": {"code": code, "message": f"error {code}", "details": {}}}
     return http_error(status, body, headers)
 
 
@@ -116,19 +116,19 @@ def assert_signed(request: urllib.request.Request) -> None:
 
 def test_create_returns_site_and_signs_request() -> None:
     client, transport, _ = make_client(ok({"data": SITE}, status=201))
-    site = client.sites.create("Tiệm bánh nhỏ, tông kem ấm")
-    assert site == Site(id=SITE_ID, name="Tiệm Bánh Kem", industry="bakery", url=f"{BASE}/d/tok")
+    site = client.sites.create("A small bakery, warm cream tones")
+    assert site == Site(id=SITE_ID, name="Cream Bakery", industry="bakery", url=f"{BASE}/d/tok")
     (request,) = transport.requests
     assert request.get_method() == "POST"
     assert request.full_url == f"{BASE}/api/public/v1/shop-designs"
-    assert json.loads(request.data) == {"prompt": "Tiệm bánh nhỏ, tông kem ấm"}  # type: ignore[arg-type]
+    assert json.loads(request.data) == {"prompt": "A small bakery, warm cream tones"}  # type: ignore[arg-type]
     assert header(request, "Idempotency-Key")
     assert_signed(request)
 
 
 def test_applied_update_returns_edit() -> None:
     client, transport, _ = make_client(ok({"data": EDIT_APPLIED}))
-    edit = client.sites.update(SITE_ID, "Chuyển sang gam màu đỏ")
+    edit = client.sites.update(SITE_ID, "Switch to a red colour scheme")
     assert edit.applied
     assert edit.credits_used == 1.5
     assert edit.credits_available == 98.5
@@ -141,15 +141,15 @@ def test_refused_update_returns_edit() -> None:
         **EDIT_APPLIED,
         "outcome": "refused",
         "changed": [],
-        "refused": ["Logo — đổi ảnh: không hỗ trợ"],
+        "refused": ["Logo - new image: not supported"],
         "credits_used": 0,
         "credits_available": None,
     }
     client, _, _ = make_client(ok({"data": refused}))
-    edit = client.sites.update(SITE_ID, "Đổi logo")
+    edit = client.sites.update(SITE_ID, "Change the logo")
     assert isinstance(edit, Edit)
     assert not edit.applied
-    assert edit.refused == ["Logo — đổi ảnh: không hỗ trợ"]
+    assert edit.refused == ["Logo - new image: not supported"]
     assert edit.credits_used == 0
     assert edit.credits_available is None
 
@@ -187,13 +187,13 @@ def test_list_stops_on_empty_page() -> None:
 
 
 def test_error_envelope_raises_storenet_error() -> None:
-    body = {"error": {"code": "403110", "message": "Thiếu scope", "details": {"scope": "x"}}}
+    body = {"error": {"code": "403110", "message": "Missing scope", "details": {"scope": "x"}}}
     client, _, _ = make_client(http_error(403, body))
     with pytest.raises(StorenetError) as caught:
         client.sites.list()
     assert caught.value.code == "403110"
     assert caught.value.status == 403
-    assert caught.value.message == "Thiếu scope"
+    assert caught.value.message == "Missing scope"
     assert caught.value.details == {"scope": "x"}
 
 
@@ -302,7 +302,7 @@ def test_update_retries_409310_once_then_raises() -> None:
         coded(409, "409310"), coded(409, "409310"), ok({"data": EDIT_APPLIED})
     )
     with pytest.raises(StorenetError) as caught:
-        client.sites.update(SITE_ID, "đỏ")
+        client.sites.update(SITE_ID, "red")
     assert caught.value.code == "409310"
     assert len(transport.requests) == 2
     assert header(transport.requests[0], "Idempotency-Key") == header(
@@ -312,7 +312,7 @@ def test_update_retries_409310_once_then_raises() -> None:
 
 def test_update_409310_once_then_success() -> None:
     client, transport, _ = make_client(coded(409, "409310"), ok({"data": EDIT_APPLIED}))
-    assert client.sites.update(SITE_ID, "đỏ").applied
+    assert client.sites.update(SITE_ID, "red").applied
     assert len(transport.requests) == 2
 
 
@@ -329,7 +329,7 @@ def test_given_key_reused_on_retry() -> None:
     client, transport, _ = make_client(
         coded(503, "503310"), coded(409, "409171"), ok({"data": EDIT_APPLIED})
     )
-    client.sites.update(SITE_ID, "đỏ", idempotency_key="my-key-1")
+    client.sites.update(SITE_ID, "red", idempotency_key="my-key-1")
     assert [header(r, "Idempotency-Key") for r in transport.requests] == ["my-key-1"] * 3
 
 
@@ -402,7 +402,7 @@ def test_exhausted_post_carries_generated_key(name: str) -> None:
 def test_post_error_carries_given_key_and_get_error_carries_none() -> None:
     client, _, _ = make_client(coded(403, "403080"), coded(503, "503190"), max_retries=0)
     with pytest.raises(StorenetError) as post:
-        client.sites.update(SITE_ID, "đỏ", idempotency_key="my-key-2")
+        client.sites.update(SITE_ID, "red", idempotency_key="my-key-2")
     assert post.value.details["idempotency_key"] == "my-key-2"
     with pytest.raises(StorenetError) as get:
         client.sites.list()
@@ -416,13 +416,13 @@ def test_post_error_carries_given_key_and_get_error_carries_none() -> None:
 def test_update_rejects_non_uuid_before_sending(site_id: str) -> None:
     client, transport, _ = make_client(ok({"data": EDIT_APPLIED}))
     with pytest.raises(ValueError):
-        client.sites.update(site_id, "đỏ")
+        client.sites.update(site_id, "red")
     assert transport.requests == []
 
 
 def test_update_accepts_hex_uuid_without_dashes() -> None:
     client, transport, _ = make_client(ok({"data": EDIT_APPLIED}))
-    client.sites.update(SITE_ID.replace("-", ""), "đỏ")
+    client.sites.update(SITE_ID.replace("-", ""), "red")
     assert transport.requests[0].full_url.endswith(f"/{SITE_ID.replace('-', '')}/edits")
 
 

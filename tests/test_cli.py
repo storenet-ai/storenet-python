@@ -24,19 +24,19 @@ ID_B = "1b2c3d4e-1111-4000-8000-00000000000b"
 ID_C = "9f8e7d6c-2222-4000-8000-00000000000c"
 SITE_A = {
     "id": ID_A,
-    "name": "Tiệm Bánh Kem",
+    "name": "Cream Bakery",
     "industry": "bakery",
     "updated_at": "2026-11-01T08:30:00Z",
     "url": f"{PUBLIC}/d/aaa",
 }
-SITE_B = {**SITE_A, "id": ID_B, "name": "Thú Cưng Xinh", "industry": "pets", "url": f"{PUBLIC}/d/b"}
-SITE_C = {**SITE_A, "id": ID_C, "name": "Cà Phê Sáng", "industry": "cafe", "url": f"{PUBLIC}/d/c"}
+SITE_B = {**SITE_A, "id": ID_B, "name": "Happy Pets", "industry": "pets", "url": f"{PUBLIC}/d/b"}
+SITE_C = {**SITE_A, "id": ID_C, "name": "Morning Café", "industry": "cafe", "url": f"{PUBLIC}/d/c"}
 EDIT = {
     "id": ID_C,
     "outcome": "applied",
-    "changed": ["Màu — đổi bộ màu", "Tiêu đề — đổi chữ"],
-    "refused": ["Logo — đổi ảnh: chưa hỗ trợ"],
-    "unsupported": ["Thêm video nền"],
+    "changed": ["Colours - new palette", "Title - new text"],
+    "refused": ["Logo - new image: not supported"],
+    "unsupported": ["Add a background video"],
     "credits_used": 1.5,
     "credits_available": 98.25,
     "url": f"{PUBLIC}/d/c",
@@ -111,7 +111,7 @@ class FakeServer:
             recorded.headers.get("Authorization") != f"ApiKey {KEY_ID}"
             or recorded.headers.get("X-Api-Signature") != expected
         ):
-            status, payload = 401, {"error": {"code": "401063", "message": "Sai chữ ký"}}
+            status, payload = 401, {"error": {"code": "401063", "message": "Bad signature"}}
         else:
             responder = self.routes.get((recorded.method, recorded.path))
             status, payload = (
@@ -167,12 +167,12 @@ def test_create_prints_name_industry_id_link_exit_0(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
     server.routes[CREATE] = reply(201, {"data": SITE_A})
-    assert main(["site", "create", "Tiệm bánh nhỏ ở phố cổ"]) == 0
+    assert main(["site", "create", "A small bakery in the old quarter"]) == 0
     out = capsys.readouterr().out
-    assert "Đã tạo: Tiệm Bánh Kem (bakery)" in out
+    assert "Created: Cream Bakery (bakery)" in out
     assert f"ID: {ID_A}" in out
-    assert f"Xem: {PUBLIC}/d/aaa" in out
-    assert json.loads(server.requests[0].body) == {"prompt": "Tiệm bánh nhỏ ở phố cổ"}
+    assert f"Preview: {PUBLIC}/d/aaa" in out
+    assert json.loads(server.requests[0].body) == {"prompt": "A small bakery in the old quarter"}
     assert server.requests[0].headers.get("Idempotency-Key")
 
 
@@ -180,12 +180,12 @@ def test_create_from_file(
     server: FakeServer, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     prompt_file = tmp_path / "mota.txt"
-    prompt_file.write_text("Cửa hàng thú cưng\nnhiều màu\n", encoding="utf-8")
+    prompt_file.write_text("Pet shop and café\nbright colours\n", encoding="utf-8")
     server.routes[CREATE] = reply(201, {"data": SITE_B})
     assert main(["site", "create", "--file", str(prompt_file), "--idempotency-key", "k-1"]) == 0
-    assert json.loads(server.requests[0].body) == {"prompt": "Cửa hàng thú cưng\nnhiều màu"}
+    assert json.loads(server.requests[0].body) == {"prompt": "Pet shop and café\nbright colours"}
     assert server.requests[0].headers.get("Idempotency-Key") == "k-1"
-    assert "Đã tạo: Thú Cưng Xinh (pets)" in capsys.readouterr().out
+    assert "Created: Happy Pets (pets)" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -215,7 +215,7 @@ def test_missing_env_exits_2_names_variable_sends_nothing(
     variable: str,
 ) -> None:
     monkeypatch.delenv(variable)
-    for argv in (["site", "list"], ["site", "create", "x"], ["site", "update", ID_A, "đỏ"]):
+    for argv in (["site", "list"], ["site", "create", "x"], ["site", "update", ID_A, "red"]):
         assert main(argv) == 2
         assert variable in capsys.readouterr().err
     assert server.requests == []
@@ -225,12 +225,12 @@ def test_update_applied_prints_changes_credits_link_exit_0(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
     server.routes[edits(ID_C)] = reply(200, {"data": EDIT})
-    assert main(["site", "update", ID_C, "Chuyển sang gam màu đỏ"]) == 0
+    assert main(["site", "update", ID_C, "Switch to a red colour scheme"]) == 0
     out = capsys.readouterr().out
-    assert "Đã đổi:\n  - Màu — đổi bộ màu\n  - Tiêu đề — đổi chữ" in out
-    assert "Không làm được:\n  - Logo — đổi ảnh: chưa hỗ trợ\n  - Thêm video nền" in out
-    assert "Credit: −1.5 (còn 98.25)" in out
-    assert f"Xem: {PUBLIC}/d/c" in out
+    assert "Changed:\n  - Colours - new palette\n  - Title - new text" in out
+    assert "Not done:\n  - Logo - new image: not supported\n  - Add a background video" in out
+    assert "Credits: -1.5 (98.25 left)" in out
+    assert f"Preview: {PUBLIC}/d/c" in out
 
 
 def test_update_not_applied_prints_reasons_exit_1(
@@ -238,27 +238,27 @@ def test_update_not_applied_prints_reasons_exit_1(
 ) -> None:
     refused = {**EDIT, "outcome": "refused", "changed": [], "credits_used": 0}
     server.routes[edits(ID_C)] = reply(200, {"data": refused})
-    assert main(["site", "update", ID_C, "Đổi logo"]) == 1
+    assert main(["site", "update", ID_C, "Change the logo"]) == 1
     out = capsys.readouterr().out
-    assert "AI không đổi gì (refused)." in out
-    assert "Logo — đổi ảnh: chưa hỗ trợ" in out
-    assert "Đã đổi" not in out
+    assert "The AI changed nothing (refused)." in out
+    assert "Logo - new image: not supported" in out
+    assert "Changed" not in out
     assert "Credit" not in out
 
 
 def test_update_prefix_one_match(server: FakeServer, capsys: pytest.CaptureFixture[str]) -> None:
     server.routes[LIST] = listing(SITE_A, SITE_B, SITE_C)
     server.routes[edits(ID_C)] = reply(200, {"data": EDIT})
-    assert main(["site", "update", ID_C[:8], "đỏ"]) == 0
+    assert main(["site", "update", ID_C[:8], "red"]) == 0
     assert server.paths()[-1] == edits(ID_C)
-    assert "Đã đổi:" in capsys.readouterr().out
+    assert "Changed:" in capsys.readouterr().out
 
 
 def test_update_prefix_ambiguous_exits_2(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
     server.routes[LIST] = listing(SITE_A, SITE_B, SITE_C)
-    assert main(["site", "update", ID_A[:8], "đỏ"]) == 2
+    assert main(["site", "update", ID_A[:8], "red"]) == 2
     err = capsys.readouterr().err
     assert ID_A in err
     assert ID_B in err
@@ -269,14 +269,14 @@ def test_update_prefix_no_match_exits_1(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
     server.routes[LIST] = listing(SITE_A)
-    assert main(["site", "update", "deadbeef", "đỏ"]) == 1
+    assert main(["site", "update", "deadbeef", "red"]) == 1
     assert "deadbeef" in capsys.readouterr().err
     assert all(path == LIST for path in server.paths())
 
 
 def test_full_uuid_skips_list(server: FakeServer) -> None:
     server.routes[edits(ID_C)] = reply(200, {"data": EDIT})
-    assert main(["site", "update", ID_C, "đỏ"]) == 0
+    assert main(["site", "update", ID_C, "red"]) == 0
     assert server.paths() == [edits(ID_C)]
 
 
@@ -284,7 +284,7 @@ def test_list_table_all_pages(server: FakeServer, capsys: pytest.CaptureFixture[
     server.routes[LIST] = listing(SITE_A, SITE_B, SITE_C, per_page=1)
     assert main(["site", "list"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].split() == ["ID", "TÊN", "NGÀNH", "CẬP", "NHẬT", "LINK"]
+    assert lines[0].split() == ["ID", "NAME", "INDUSTRY", "UPDATED", "LINK"]
     when = datetime.fromisoformat("2026-11-01T08:30:00+00:00").astimezone()
     for line, site in zip(lines[1:4], (SITE_A, SITE_B, SITE_C), strict=True):
         assert line.startswith(str(site["id"])[:8] + "  ")
@@ -292,29 +292,29 @@ def test_list_table_all_pages(server: FakeServer, capsys: pytest.CaptureFixture[
         for value in (site["name"], site["industry"], site["url"]):
             assert str(value) in line
         assert when.strftime("%Y-%m-%d %H:%M") in line
-    assert lines[4] == "Tổng: 3 mẫu"
+    assert lines[4] == "Total: 3 designs"
     assert [r.query["page"] for r in server.requests] == [["1"], ["2"], ["3"]]
 
 
 def test_list_empty(server: FakeServer, capsys: pytest.CaptureFixture[str]) -> None:
     server.routes[LIST] = listing()
     assert main(["site", "list"]) == 0
-    assert "Chưa có mẫu thiết kế nào" in capsys.readouterr().out
+    assert "No designs yet" in capsys.readouterr().out
 
 
 def test_server_error_prints_code_exit_1(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    error = {"error": {"code": "403290", "message": "Cần gói Pro", "details": {}}}
+    error = {"error": {"code": "403290", "message": "Pro plan required", "details": {}}}
     server.routes[LIST] = reply(403, error)
     assert main(["site", "list"]) == 1
-    assert "Lỗi 403290: Cần gói Pro" in capsys.readouterr().err
+    assert "Error 403290: Pro plan required" in capsys.readouterr().err
 
 
 def test_route_missing_is_not_deployed_exit_1(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["site", "update", ID_C, "đỏ"]) == 1
+    assert main(["site", "update", ID_C, "red"]) == 1
     assert "not_deployed" in capsys.readouterr().err
 
 
@@ -336,10 +336,10 @@ def test_secret_never_printed(server: FakeServer, capsys: pytest.CaptureFixture[
         ["site", "create", "x", "--json"],
         ["site", "list"],
         ["site", "list", "--json"],
-        ["site", "update", ID_C, "đỏ"],
-        ["site", "update", "1b2c3d4e", "đỏ"],
-        ["site", "update", "00000000", "đỏ"],
-        ["site", "update", "ffffffff-ffff-4fff-8fff-ffffffffffff", "đỏ"],
+        ["site", "update", ID_C, "red"],
+        ["site", "update", "1b2c3d4e", "red"],
+        ["site", "update", "00000000", "red"],
+        ["site", "update", "ffffffff-ffff-4fff-8fff-ffffffffffff", "red"],
         ["site", "bogus"],
     ]
     for argv in runs:
@@ -363,29 +363,29 @@ def test_exhausted_create_prints_key_to_rerun_with(
     code: str,
 ) -> None:
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
-    server.routes[CREATE] = reply(status, {"error": {"code": code, "message": "bận"}})
+    server.routes[CREATE] = reply(status, {"error": {"code": code, "message": "busy"}})
     assert main(["site", "create", "x"]) == 1
     keys = {request.headers["Idempotency-Key"] for request in server.requests}
     assert len(server.requests) == 3
     assert len(keys) == 1
     err = capsys.readouterr().err
-    assert f"Lỗi {code}" in err
-    assert f"--idempotency-key {keys.pop()} để nhận kết quả, không trừ credit lần nữa." in err
+    assert f"Error {code}" in err
+    assert f"--idempotency-key {keys.pop()} to get the result without being charged again." in err
 
 
 def test_exhausted_update_hint_keeps_given_key(
     server: FakeServer, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
-    server.routes[edits(ID_C)] = reply(503, {"error": {"code": "503190", "message": "bận"}})
-    assert main(["site", "update", ID_C, "đỏ", "--idempotency-key", "k-123"]) == 1
-    assert "Chạy lại với --idempotency-key k-123" in capsys.readouterr().err
+    server.routes[edits(ID_C)] = reply(503, {"error": {"code": "503190", "message": "busy"}})
+    assert main(["site", "update", ID_C, "red", "--idempotency-key", "k-123"]) == 1
+    assert "Run again with --idempotency-key k-123" in capsys.readouterr().err
 
 
 def test_final_error_prints_no_rerun_hint(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    server.routes[CREATE] = reply(403, {"error": {"code": "403080", "message": "Hết credit"}})
+    server.routes[CREATE] = reply(403, {"error": {"code": "403080", "message": "Out of credits"}})
     assert main(["site", "create", "x"]) == 1
     assert "--idempotency-key" not in capsys.readouterr().err
 
@@ -397,4 +397,4 @@ def test_plain_http_to_remote_host_exits_2(
     monkeypatch.setenv("STORENET_KEY_ID", KEY_ID)
     monkeypatch.setenv("STORENET_SECRET", SECRET)
     assert main(["site", "list"]) == 2
-    assert "STORENET_BASE_URL phải dùng https" in capsys.readouterr().err
+    assert "STORENET_BASE_URL must use https" in capsys.readouterr().err

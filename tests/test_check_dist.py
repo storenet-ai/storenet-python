@@ -93,7 +93,7 @@ def test_forbidden_string_fails(
 ) -> None:
     bad = {**WHEEL_FILES, "storenet/cli.py": f"X = '{token.upper()}abc'\n".encode()}
     assert run(tmp_path, bad, SDIST_FILES) == 1
-    assert "chuỗi cấm" in capsys.readouterr().err
+    assert "forbidden string" in capsys.readouterr().err
 
 
 def test_extra_denied_words_from_flag_and_env(
