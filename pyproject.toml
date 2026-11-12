@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-# Author email PLACEHOLDER stays out until chosen: hatchling rejects a value that is not an address.
+# No author email until a real address is chosen: hatchling rejects a value that is not an address.
 authors = [{ name = "PLACEHOLDER" }]
 keywords = ["storenet", "partner-api", "cli", "shop-design"]
 classifiers = [

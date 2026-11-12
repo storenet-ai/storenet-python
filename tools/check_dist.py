@@ -56,9 +56,15 @@ def scan_text(name: str, text: str, extra_denied: Iterable[str] = ()) -> list[st
     lowered = text.lower()
     problems = [
         f"{name}: chứa chuỗi cấm {token!r}"
-        for token in (*FORBIDDEN, *extra_denied)
+        for token in FORBIDDEN
         if token and token.lower() in lowered
     ]
+    # Deny-list words are private: the release log is public, so name only their position.
+    problems.extend(
+        f"{name}: chứa chuỗi cấm bổ sung #{index}"
+        for index, token in enumerate(extra_denied, start=1)
+        if token and token.lower() in lowered
+    )
     problems.extend(
         f"{name}: URL ngoài allowlist {url!r}"
         for url in URL_PATTERN.findall(text)

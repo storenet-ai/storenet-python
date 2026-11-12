@@ -161,3 +161,15 @@ def test_require_deny_with_words_scans_them(
     assert run(tmp_path, WHEEL_FILES, bad, "--require-deny") == 1
     monkeypatch.delenv(check_dist.DENY_ENV)
     assert run(tmp_path, WHEEL_FILES, SDIST_FILES, "--require-deny", "--deny", "x1y2") == 0
+
+
+def test_denied_word_never_reaches_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(check_dist.DENY_ENV, "zetashop,acmecorp")
+    bad = {**SDIST_FILES, "storenet-0.1.0/README.md": b"internal AcmeCorp\n"}
+    assert run(tmp_path, WHEEL_FILES, bad, "--require-deny") == 1
+    captured = capsys.readouterr()
+    log = (captured.out + captured.err).lower()
+    assert "acmecorp" not in log
+    assert "#2" in log
