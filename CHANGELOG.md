@@ -3,6 +3,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-11-13
+
+### Changed
+
+- README: the quick shop designer is no longer limited to the Pro plan. Every plan that includes
+  it can use the package, with a per-plan limit on the number of designs (`409311` at the limit).
+  No code changes.
+
 ## [0.1.0] - 2026-11-13
 
 ### Added
