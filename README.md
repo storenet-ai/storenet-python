@@ -8,8 +8,12 @@ AI, and list the web designs of a StoreNet shop without signing HMAC requests yo
 
 ## Requirements
 
-- The StoreNet shop is on the **Pro plan or higher** and has the quick shop designer turned on.
-  A lower plan returns `403290`; a disabled designer returns `404310`.
+- The StoreNet shop's plan includes the quick shop designer, and the designer is turned on.
+  A plan without it returns `403290`; a disabled designer returns `404310`.
+- Each plan limits how many designs a shop can hold. The count covers every design of the shop,
+  including those made in the StoreNet studio, which `site list` does not show. At the limit,
+  `create` returns `409311` with the limit in `details["max"]`: delete a design in the studio or
+  upgrade the plan. Editing an existing design is not limited by this count.
 - A Partner API key with the `shop_designs:write` scope, created by a shop administrator.
   Designs belong to the administrator who created the key, and AI credits are charged to that
   administrator's wallet.
@@ -131,7 +135,8 @@ and a fresh signature:
 - `409310` (the design was just saved elsewhere) on `update`: retries exactly once against the
   latest version.
 
-Other 4xx errors (for example `403080`, out of credits) are not retried.
+Other 4xx errors (for example `403080`, out of credits, or `409311`, design limit reached) are
+not retried.
 
 When `create` / `update` still fails after every retry, `StorenetError.details["idempotency_key"]`
 holds the key that was sent. The request may have completed on the server: call again with that

@@ -306,10 +306,10 @@ def test_list_empty(server: FakeServer, capsys: pytest.CaptureFixture[str]) -> N
 def test_server_error_prints_code_exit_1(
     server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    error = {"error": {"code": "403290", "message": "Pro plan required", "details": {}}}
+    error = {"error": {"code": "403290", "message": "Plan lacks this tool", "details": {}}}
     server.routes[LIST] = reply(403, error)
     assert main(["site", "list"]) == 1
-    assert "Error 403290: Pro plan required" in capsys.readouterr().err
+    assert "Error 403290: Plan lacks this tool" in capsys.readouterr().err
 
 
 def test_route_missing_is_not_deployed_exit_1(
