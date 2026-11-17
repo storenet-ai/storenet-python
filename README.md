@@ -3,8 +3,7 @@
 Python library and `storenet` command-line tool for the StoreNet Partner API: create, edit with
 AI, and list the web designs of a StoreNet shop without signing HMAC requests yourself.
 
-- Python 3.10 or later, standard library only (no dependencies).
-- Version 0.1 covers three operations on shop designs: `create`, `update`, `list`.
+Python 3.10 or later, standard library only (no dependencies).
 
 ## Requirements
 
@@ -27,8 +26,7 @@ storenet --version
 
 ## Configuration
 
-The package reads three environment variables. If any is missing, the command exits with code 2
-and names the missing variable. There is no default URL.
+The package reads three environment variables. There is no default URL.
 
 ```bash
 export STORENET_BASE_URL="https://shop.example.com"   # your shop's address
@@ -65,11 +63,9 @@ Prints what the AI changed, what it could not do (with reasons), the credits cha
 remaining balance, and the preview link.
 
 - `ID` is the full ID or its first few characters (usually the 8 shown by `site list`). A prefix
-  that matches several designs lists the matching IDs and exits with code 2; a prefix that
-  matches none exits with code 1.
+  that matches several designs lists the matching IDs.
 - The request must be 1 to 400 characters long. An edit can take up to about 110 seconds.
-- When the AI applies no change, the command prints the reasons, charges no credit and exits
-  with code 1.
+- When the AI applies no change, the command prints the reasons and charges no credit.
 - The preview link stays the same after an edit.
 
 ### List designs
@@ -100,7 +96,7 @@ the key's owner, most recently updated first; the command fetches every page.
 ## Library usage
 
 ```python
-from storenet import StorenetClient, StorenetError
+from storenet import StorenetClient
 
 client = StorenetClient.from_env()  # or StorenetClient(base_url, key_id, secret)
 
@@ -119,8 +115,8 @@ for item in client.sites.list():
 
 - `sites.update` returns an `Edit` even when the AI changes nothing (`outcome` is `refused` or
   `empty`); only real errors raise `StorenetError`.
-- `sites.update` needs the full ID (a UUID) as in `Site.id`; any other value raises `ValueError`
-  before anything is sent. Only the `storenet` command resolves an ID from its first characters.
+- `sites.update` needs the full ID (a UUID) as in `Site.id`, not a prefix; any other value
+  raises `ValueError` before anything is sent.
 - `StorenetClient(..., timeout=130, max_retries=2)`: the timeout applies to each request.
 
 ## Automatic retries
@@ -135,13 +131,13 @@ and a fresh signature:
 - `409310` (the design was just saved elsewhere) on `update`: retries exactly once against the
   latest version.
 
-Other 4xx errors (for example `403080`, out of credits, or `409311`, design limit reached) are
-not retried.
+Other errors (for example `403080`, out of credits, or `409311`, design limit reached) are not
+retried.
 
-When `create` / `update` still fails after every retry, `StorenetError.details["idempotency_key"]`
-holds the key that was sent. The request may have completed on the server: call again with that
-same key to get the result without being charged again. The `storenet` command prints an
-`--idempotency-key <key>` hint for you.
+When `create` / `update` fails, `StorenetError.details["idempotency_key"]` holds the key that was
+sent. After a timeout, a dropped connection or one of the temporary codes above, the request may
+have completed on the server: call again with that same key to get the result without being
+charged again. In those cases the `storenet` command prints an `--idempotency-key <key>` hint.
 
 ## Errors
 
@@ -152,7 +148,7 @@ Errors returned by the server carry the server's code in `StorenetError.code` (f
 |---|---|
 | `missing_config` | A missing environment variable, or a `base_url` that is not a full URL (`StorenetConfigError`) |
 | `insecure_base_url` | `base_url` uses http to a host other than a loopback IP address (`StorenetConfigError`) |
-| `redirected` | The server answered with a 3xx redirect; `details["location"]` is the target. Set `STORENET_BASE_URL` to the final https address |
+| `redirected` | The server answered with a 3xx redirect; `details["location"]` is the target |
 | `not_deployed` | The shop's server does not support this operation yet (usually `list` / `update`); ask the shop administrator to update |
 | `validation_error` | The server rejected the request data (422) |
 | `timeout` | No response within the timeout |

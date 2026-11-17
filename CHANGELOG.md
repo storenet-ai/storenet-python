@@ -3,6 +3,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-17
+
+### Changed
+
+- README: the library example no longer imports `StorenetError` without using it; repeated
+  statements are removed, and the retry section now says which failures print the
+  `--idempotency-key` hint and that other 5xx errors are not retried either. No code changes.
+
 ## [0.1.1] - 2026-11-16
 
 ### Changed
